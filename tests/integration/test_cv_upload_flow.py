@@ -137,6 +137,13 @@ def test_get_analysis_before_ready_returns_404(client, auth_headers):
     assert response.status_code == 404
 
 
+def test_get_analysis_for_unknown_candidate_returns_404(client, auth_headers):
+    response = client.get("/cv/000000000000000000000000/analysis", headers=auth_headers)
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Candidate not found"
+
+
 def test_job_recommendations_for_unknown_candidate_returns_404(client, auth_headers):
     response = client.post(
         "/jobs/recommendations", headers=auth_headers, json={"candidate_id": "000000000000000000000000"}
