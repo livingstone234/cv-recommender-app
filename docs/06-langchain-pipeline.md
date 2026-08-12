@@ -14,20 +14,23 @@ from app.config import settings
 import base64
 
 def get_llm(provider: str = "openai"):
+    if provider == "openai":
+        return ChatOpenAI(model="gpt-4o", api_key=settings.OPENAI_API_KEY, temperature=0)
     if provider == "gemini":
         return ChatGoogleGenerativeAI(model="gemini-1.5-pro", api_key=settings.GEMINI_API_KEY)
-    return ChatOpenAI(model="gpt-4o", api_key=settings.OPENAI_API_KEY, temperature=0)
+    raise ValueError(f"Unsupported LLM provider: {provider!r}")
 
-def extract_cv_from_file(file_bytes: bytes, mime_type: str, provider: str = "openai") -> ExtractedCV:
-    """Multimodal call: sends the raw CV (PDF page images or DOCX-rendered images) to the LLM
+def extract_cv_from_file(page_images: list[bytes], mime_type: str = "image/png", provider: str = "openai") -> ExtractedCV:
+    """Multimodal call: sends the raw CV page images (one per page) to the LLM
     and forces structured output validated against the ExtractedCV Pydantic schema."""
     llm = get_llm(provider).with_structured_output(ExtractedCV)
-    b64 = base64.b64encode(file_bytes).decode()
 
-    message = HumanMessage(content=[
-        {"type": "text", "text": "Extract all candidate information from this CV into the structured schema."},
-        {"type": "image_url", "image_url": f"data:{mime_type};base64,{b64}"},
-    ])
+    content = [{"type": "text", "text": "Extract all candidate information from this CV into the structured schema."}]
+    for image_bytes in page_images:
+        b64 = base64.b64encode(image_bytes).decode()
+        content.append({"type": "image_url", "image_url": f"data:{mime_type};base64,{b64}"})
+
+    message = HumanMessage(content=content)
     return llm.invoke([message])
 
 def generate_improvements(cv: ExtractedCV, provider: str = "openai") -> ImprovementReport:
@@ -53,6 +56,23 @@ def match_jobs(cv: ExtractedCV, provider: str = "openai") -> JobMatchReport:
     chain = prompt | llm
     return chain.invoke({"cv_json": cv.model_dump_json()})
 ```
+
+## Two fixes made while implementing this, both caught before any real API call
+
+- **`extract_cv_from_file` takes `page_images: list[bytes]`, not a single
+  `file_bytes: bytes`.** [Milestone 5](02-architecture.md)'s
+  `to_image_bytes` returns one PNG per page, since a real CV can span several
+  pages — the original single-`bytes` signature would silently drop every
+  page but the first. The fix sends one `image_url` content block per page in
+  the same `HumanMessage`, which is exactly how multi-image multimodal input
+  works for both providers: multiple images, one message.
+- **`get_llm` now raises on an unrecognized `provider` instead of silently
+  falling back to OpenAI.** The original `if provider == "gemini": ... else:
+  return ChatOpenAI(...)` meant any typo (`"Gemini"`, `"open-ai"`) would
+  quietly route to the wrong provider — the caller would get an answer, just
+  not from the model they asked for, with no error to signal the mistake.
+  An explicit `if/elif/raise ValueError` makes a bad provider name fail
+  loudly at the call site instead.
 
 ## Breaking down the three calls
 
@@ -87,6 +107,32 @@ the LLM. This is LangChain's "LCEL" (LangChain Expression Language) — the same
 `|` composition pattern works for chaining in retrievers, output parsers, or
 other chains later, which is the main reason to learn the pattern rather than
 just calling `llm.invoke(prompt.format(...))` directly.
+
+## Testing this without a real OpenAI/Gemini API key
+
+Per [10-testing-strategy.md](10-testing-strategy.md), tests never call a real
+LLM provider — so this module is fully testable, including while genuinely
+not having a paid API key yet. The approach: `unittest.mock.patch.object` on
+`llm_service.get_llm` itself, returning a small stub object whose
+`.with_structured_output(schema)` method returns a **`RunnableLambda`** — a
+LangChain helper that wraps a plain Python function as a real `Runnable`.
+That matters because it's what lets the stub compose correctly with `prompt |
+llm` (LCEL, see below) and support `.invoke(...)` the same way a real chat
+model would, without a `MagicMock` needing to fake LangChain's internal
+composition protocol.
+
+This surfaced a genuinely useful fact along the way: `get_llm("openai")`
+**cannot even construct a `ChatOpenAI` client** if `settings.OPENAI_API_KEY`
+is empty — both the OpenAI and Gemini SDKs treat an empty string the same as
+"no key at all" and raise immediately, before any network call. So the tests
+for `get_llm` itself (as opposed to the three pipeline functions, which stub
+`get_llm` out entirely) monkeypatch in a dummy key. The practical
+consequence: this module's *logic* — prompt building, schema selection,
+provider dispatch, multi-page image handling — is fully verified without a
+key, but actually **running** the pipeline end-to-end (Milestone 7's manual
+curl-a-real-CV check) needs a real `OPENAI_API_KEY` or `GEMINI_API_KEY` set,
+since `get_llm` fails at construction otherwise. Worth knowing going in,
+rather than discovering it partway through a manual test.
 
 ## The job-board link builder (deterministic, not LLM-generated)
 

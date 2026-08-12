@@ -36,15 +36,24 @@ your machine end-to-end.
   This is a good milestone to sanity-check manually: feed it a real sample CV
   PDF and confirm you get back valid PNG bytes per page.
 
-## Milestone 6 — LangChain pipeline (first real LLM calls)
+## Milestone 6 — LangChain pipeline
 - `app/services/llm_service.py` ([06-langchain-pipeline.md](06-langchain-pipeline.md)).
-- Get `extract_cv_from_file` working against **one real API key** (OpenAI is
-  fine to start; add Gemini once the pattern works) on a real sample CV before
-  building the other two chains — validate the multimodal call actually works
-  before layering more on top.
-- Then `generate_improvements` and `match_jobs`.
 - `app/services/job_search_service.py` — deterministic link builder, unit-testable
   with no LLM involved.
+- **Built and fully unit-tested without a real OpenAI/Gemini API key** — per
+  [10-testing-strategy.md](10-testing-strategy.md), tests never hit a real
+  provider anyway, so `get_llm` is stubbed with a `RunnableLambda` at the test
+  boundary (see [06-langchain-pipeline.md](06-langchain-pipeline.md)'s testing
+  section for why that specific approach, not a plain `MagicMock`).
+- **Deferred, pending an API key:** the original plan here was to validate
+  `extract_cv_from_file` against **one real key** on a real sample CV before
+  building the other two chains, to confirm the multimodal call actually
+  works end-to-end, not just that the code is well-formed. That manual check
+  didn't happen this round — no paid OpenAI/Gemini access yet. The pipeline's
+  *logic* is fully covered by tests, but nobody has confirmed a real CV image
+  produces a sane `ExtractedCV` back. Do this — and the equivalent live check
+  for `generate_improvements`/`match_jobs` — the first time a key is
+  available, before trusting the pipeline's actual output quality.
 
 ## Milestone 7 — Wire the routers
 - `app/routers/cv.py`, `analysis.py`, `jobs.py` ([07-api-endpoints.md](07-api-endpoints.md)).
