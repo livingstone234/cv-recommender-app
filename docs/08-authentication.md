@@ -3,14 +3,34 @@
 ## `app/auth/api_key.py`
 
 ```python
-from fastapi import Header, HTTPException, status
-from app.config import settings
 import hmac
+from typing import Optional
 
-async def require_api_key(x_api_key: str = Header(...)):
-    if not hmac.compare_digest(x_api_key, settings.API_KEY):
+from fastapi import Header, HTTPException, status
+
+from app.config import settings
+
+async def require_api_key(x_api_key: Optional[str] = Header(default=None)) -> None:
+    if x_api_key is None or not hmac.compare_digest(x_api_key, settings.API_KEY):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key")
 ```
+
+`x_api_key` is declared `Header(default=None)`, not `Header(...)` (required),
+with an explicit `is None` check inside the function. This was a real
+inconsistency in the original design: with `Header(...)`, FastAPI validates
+the header's *presence* before the function body ever runs — a caller who
+sends no `x-api-key` header at all gets FastAPI's automatic `422 Unprocessable
+Entity`, while a caller who sends the *wrong* key gets `401` from this
+function's own check. Two different status codes for what's really one
+failure mode ("you're not authorized to call this"). Making the header
+optional and checking for `None` explicitly means both paths converge on the
+same `401`, which is the response a client should actually be able to rely on.
+
+`require_api_key` is imported and re-exported from `app/deps.py` (alongside
+`get_db`), so routers use `from app.deps import require_api_key, get_db` per
+[07-api-endpoints.md](07-api-endpoints.md) — one place that assembles "the
+things a route depends on," rather than routers reaching into `app/auth/`
+directly.
 
 ## Why `hmac.compare_digest` instead of `x_api_key == settings.API_KEY`
 
