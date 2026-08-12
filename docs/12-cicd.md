@@ -19,8 +19,8 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       - name: Install system dependencies (poppler, LibreOffice)
-        run: sudo apt-get update && sudo apt-get install -y poppler-utils libreoffice
-      - run: pip install -r requirements.txt
+        run: sudo apt-get update && sudo apt-get install -y poppler-utils libreoffice-writer
+      - run: pip install -r requirements-dev.txt
       - run: pytest
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -46,13 +46,18 @@ coverage gate (`--cov=app --cov-fail-under=80`) rather than plain `pytest`.
 **The system dependency step was added, not in the original spec.** Caught
 while implementing [file parsing](02-architecture.md): `pdf2image` and the
 DOCX→PDF conversion path both shell out to OS-level binaries
-(`poppler-utils`, `libreoffice` — see
+(`poppler-utils`, `libreoffice-writer` — see
 [14-environment-and-requirements.md](14-environment-and-requirements.md)) that
 GitHub's `ubuntu-latest` runners don't have preinstalled. Without this step,
-`pip install -r requirements.txt` succeeds but the file-parsing tests fail on
-first run in CI — a gap that's easy to miss locally if your own machine
-already happens to have both installed. `libreoffice` in particular is a large
-package; expect this step to add real time to every CI run, which is worth
+`pip install -r requirements-dev.txt` succeeds but the file-parsing tests fail
+on first run in CI — a gap that's easy to miss locally if your own machine
+already happens to have both installed. `pip install -r requirements-dev.txt`
+(not `requirements.txt`) is what pulls in `pytest` and the rest of the test
+tooling that plain `requirements.txt` no longer includes — see
+[14-environment-and-requirements.md](14-environment-and-requirements.md) for
+why they're split. `libreoffice-writer` in particular is still a sizeable
+package even without the full suite; expect this step to add real time to
+every CI run, which is worth
 knowing before wondering why a "just running tests" pipeline got slow.
 
 ## Why two branches, two workflows, two AWS environments

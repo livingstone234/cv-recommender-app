@@ -24,11 +24,21 @@ injected via the Secrets Manager boot script described in
 [11-aws-infrastructure.md](11-aws-infrastructure.md#112-secrets-manager), and in
 CI they come from GitHub Actions secrets (see [12-cicd.md](12-cicd.md)).
 
-## `requirements.txt`
+## `requirements.txt` / `requirements-dev.txt`
 
-```
+Split into two files, not one — caught while writing the `Dockerfile`:
+a single `requirements.txt` containing `pytest`, `moto`, `mongomock`, etc.
+alongside runtime deps would mean the production Docker image installs (and
+ships) an entire test framework it never uses. `requirements.txt` is runtime
+only; `requirements-dev.txt` starts with `-r requirements.txt` and layers the
+test tooling on top, so local dev and CI use `pip install -r
+requirements-dev.txt` while the Dockerfile uses plain `requirements.txt`.
+
+```text
+# requirements.txt (runtime, what actually ships in the Docker image)
 fastapi==0.115.*
 uvicorn[standard]==0.30.*
+gunicorn==23.*             # production process manager, see Dockerfile notes
 pydantic==2.*
 pydantic-settings==2.*
 motor==3.*                # async MongoDB driver
@@ -39,6 +49,12 @@ boto3==1.35.*
 pypdf==5.*
 pdf2image==1.17.*
 python-multipart==0.0.*
+```
+
+```text
+# requirements-dev.txt (local dev + CI only)
+-r requirements.txt
+
 pytest==8.*
 pytest-cov==5.*
 pytest-asyncio==0.24.*
@@ -48,20 +64,21 @@ moto[s3]==5.*
 httpx==0.27.*
 ```
 
-**System dependencies, not in `requirements.txt` because they're binaries,
-not Python packages** — needed on any machine that runs `file_parsing.py`'s
-`to_image_bytes` (local dev, Docker image, and CI):
+**System dependencies, not in either requirements file because they're
+binaries, not Python packages** — needed on any machine that runs
+`file_parsing.py`'s `to_image_bytes` (local dev, Docker image, and CI):
 
 - **`poppler-utils`** — `pdf2image` shells out to poppler's `pdftoppm`/`pdfinfo`
   binaries to rasterize PDF pages; without it installed at the OS level,
   PDF handling fails at runtime no matter how correctly `pdf2image` itself is
   installed via pip.
-- **`libreoffice`** (specifically the `soffice` binary, headless) — DOCX files
-  are converted to PDF via `soffice --headless --convert-to pdf` before going
-  through the same PDF→image path, since there's no equivalent of `pdf2image`
-  for `.docx` directly. This is a large package (LibreOffice's full engine) —
-  worth knowing before it silently adds several minutes to a Docker build or
-  CI run the first time it's added.
+- **`libreoffice-writer`** (not the full `libreoffice` metapackage) — DOCX
+  files are converted to PDF via `soffice --headless --convert-to pdf` before
+  going through the same PDF→image path, since there's no equivalent of
+  `pdf2image` for `.docx` directly. `libreoffice-writer` pulls in
+  `libreoffice-core` (which owns the `soffice` binary) without the Calc/
+  Impress/Draw components this project never uses — meaningfully smaller and
+  faster to install than the full suite, in both the Docker image and CI.
 
 Worth knowing what a few of these are actually for, since "I listed them in
 requirements.txt" isn't the same as understanding why they're there:

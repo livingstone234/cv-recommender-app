@@ -43,7 +43,9 @@ cv-recommender-api/
 │       └── prod.yml
 ├── frontend/                      # Simple React UI (see 13-frontend.md)
 ├── Dockerfile
-├── requirements.txt
+├── .dockerignore
+├── requirements.txt                # runtime deps only - what ships in the image
+├── requirements-dev.txt            # + pytest/moto/mongomock, for local dev & CI
 ├── pytest.ini
 └── README.md
 ```
