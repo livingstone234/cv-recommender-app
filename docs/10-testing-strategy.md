@@ -82,6 +82,30 @@ def test_upload_cv_returns_processing_status(mock_upload):
     assert response.json()["status"] == "processing"
 ```
 
+The real version of this test (built in [Milestone 7](15-roadmap.md)) adds
+one more piece: **`app.dependency_overrides[get_db] = lambda: fake_db`**,
+pointing the route's `Depends(get_db)` at a fresh `mongomock-motor` database
+per test, instead of the real Motor client `app/deps.py` builds against
+`settings.MONGODB_URI`. This is FastAPI's built-in mechanism for swapping a
+dependency in tests — the override must key off the *exact same* function
+object the route's `Depends(...)` uses (`from app.deps import get_db`, not a
+re-implementation), or FastAPI won't match it to anything and the override
+silently does nothing. Combined with `unittest.mock.patch` on
+`s3_service.upload_file` and the three `llm_service` functions, a single test
+exercises the full router → service → DB wiring for `/cv/upload` →
+`/cv/{id}` → `/cv/{id}/analysis` → `/jobs/recommendations` without touching
+real AWS, a real LLM provider, or even a real MongoDB process.
+
+**A gotcha this surfaced, worth knowing before it costs you a confusing
+debugging session:** `TestClient` runs a route's `BackgroundTasks` as part of
+the same call — so if a background task raises an unhandled exception, that
+exception propagates back through the test client's `.post()`/`.get()` call
+itself, failing the *test* with a stack trace that looks like it came from
+your test code, not the background task. See
+[07-api-endpoints.md](07-api-endpoints.md) for where this actually bit the
+CV analysis pipeline's error handling and how it was fixed (logging instead
+of re-raising).
+
 `@patch("app.services.s3_service.upload_file", ...)` patches at the **service**
 boundary, not deep inside `boto3` — this is only possible because routers call
 services and services call SDKs, per the layering in
