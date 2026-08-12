@@ -44,8 +44,24 @@ pytest-cov==5.*
 pytest-asyncio==0.24.*
 mongomock==4.*
 mongomock-motor==0.0.*
+moto[s3]==5.*
 httpx==0.27.*
 ```
+
+**System dependencies, not in `requirements.txt` because they're binaries,
+not Python packages** — needed on any machine that runs `file_parsing.py`'s
+`to_image_bytes` (local dev, Docker image, and CI):
+
+- **`poppler-utils`** — `pdf2image` shells out to poppler's `pdftoppm`/`pdfinfo`
+  binaries to rasterize PDF pages; without it installed at the OS level,
+  PDF handling fails at runtime no matter how correctly `pdf2image` itself is
+  installed via pip.
+- **`libreoffice`** (specifically the `soffice` binary, headless) — DOCX files
+  are converted to PDF via `soffice --headless --convert-to pdf` before going
+  through the same PDF→image path, since there's no equivalent of `pdf2image`
+  for `.docx` directly. This is a large package (LibreOffice's full engine) —
+  worth knowing before it silently adds several minutes to a Docker build or
+  CI run the first time it's added.
 
 Worth knowing what a few of these are actually for, since "I listed them in
 requirements.txt" isn't the same as understanding why they're there:
@@ -69,6 +85,10 @@ requirements.txt" isn't the same as understanding why they're there:
   [10-testing-strategy.md](10-testing-strategy.md)).
 - **`httpx`** — FastAPI's `TestClient` is built on top of `httpx`, not
   `requests`; it's a direct dependency because integration tests import it.
+- **`moto[s3]`** — an in-memory fake AWS used in tests (see
+  [09-s3-storage.md](09-s3-storage.md)), the S3 equivalent of `mongomock` for
+  Mongo. The `[s3]` extra pulls in just what's needed to mock S3, not every
+  AWS service moto supports.
 
 Pin versions with `.*` (minor-version pinning) rather than exact pins so
 patch-level fixes flow in automatically, but a `pip install --upgrade` can't

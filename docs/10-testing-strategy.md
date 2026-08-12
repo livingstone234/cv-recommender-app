@@ -19,6 +19,15 @@ in-memory fake used is `mongomock-motor`'s `AsyncMongoMockClient` — a thin
 async wrapper around `mongomock` that matches Motor's `await`-based API. Same
 idea (no real MongoDB process needed), just the async-compatible variant.
 
+The equivalent for `boto3`/S3 is **`moto`**'s `mock_aws()` context manager
+(see [09-s3-storage.md](09-s3-storage.md)) — same "fake the whole service
+in-memory" idea, and it comes with a real gotcha worth knowing before you hit
+it: `boto3` clients cache credential resolution permanently on their *first*
+real API call. A client built at import time, before test setup has run,
+gets stuck failing forever even if the environment is fixed afterward —
+which is why `app/services/s3_service.py` builds its client lazily on first
+use rather than as a module-level singleton.
+
 LLM calls are mocked in *both* tiers — never call a real OpenAI/Gemini API in
 CI. That would make tests slow, flaky (network-dependent), non-deterministic
 (LLMs aren't guaranteed to return identical output twice), and cost real money

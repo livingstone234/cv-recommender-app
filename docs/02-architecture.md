@@ -40,12 +40,22 @@ keys shipped to the browser) matters: the LLM keys must never leave the server.
 3. Backend **immediately returns** `{"candidate_id": ..., "status": "processing"}` —
    it does not make the caller wait for the LLM. The actual analysis runs as a
    FastAPI `BackgroundTask` (see [07-api-endpoints.md](07-api-endpoints.md)).
-4. In the background: the raw file (PDF/DOCX/image) is normalized into page images
-   (`to_image_bytes` — a PDF becomes one PNG per page; this is what makes the
-   *multimodal* LLM call possible: the model reads the CV visually, no text
-   extraction/OCR library needed).
-5. Those images go to the LLM via `llm_service.extract_cv_from_file`, which forces
-   the response into the `ExtractedCV` Pydantic schema.
+4. In the background: the raw file (PDF/DOCX/image) is normalized into page
+   images (`app/utils/file_parsing.to_image_bytes` — returns `list[bytes]`,
+   one PNG per page, since a real CV can span several pages; a single image
+   upload comes back as a one-element list). PDFs go through `pdf2image`
+   directly; DOCX files are first converted to PDF via headless LibreOffice
+   (`soffice --headless --convert-to pdf`), then through the same PDF path —
+   this is what makes the *multimodal* LLM call possible: the model reads the
+   CV visually, no text extraction/OCR library needed.
+5. Those page images go to the LLM via `llm_service.extract_cv_from_file`,
+   which forces the response into the `ExtractedCV` Pydantic schema. (Not yet
+   built at this point in the roadmap — `extract_cv_from_file`'s signature in
+   [06-langchain-pipeline.md](06-langchain-pipeline.md) currently takes a
+   single `file_bytes: bytes`; since page normalization now returns a *list*,
+   that function will need to send one `image_url` content block per page in
+   the `HumanMessage`, not just one. Flagged here so it isn't missed when
+   Milestone 6 is built.)
 6. The extracted CV is fed into two more LLM calls: `generate_improvements` (→
    `ImprovementReport`) and `match_jobs` (→ `JobMatchReport`).
 7. All three results are saved to the `Analysis` collection in Mongo, keyed by

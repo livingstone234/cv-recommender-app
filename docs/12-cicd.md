@@ -18,6 +18,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
+      - name: Install system dependencies (poppler, LibreOffice)
+        run: sudo apt-get update && sudo apt-get install -y poppler-utils libreoffice
       - run: pip install -r requirements.txt
       - run: pytest
       - name: Configure AWS credentials
@@ -40,6 +42,18 @@ jobs:
 `.github/workflows/prod.yml` is the same shape, triggered on push to `main`,
 using `AWS_ROLE_PROD` / `cv-recommender-prod`, and running `pytest` **with** the
 coverage gate (`--cov=app --cov-fail-under=80`) rather than plain `pytest`.
+
+**The system dependency step was added, not in the original spec.** Caught
+while implementing [file parsing](02-architecture.md): `pdf2image` and the
+DOCX→PDF conversion path both shell out to OS-level binaries
+(`poppler-utils`, `libreoffice` — see
+[14-environment-and-requirements.md](14-environment-and-requirements.md)) that
+GitHub's `ubuntu-latest` runners don't have preinstalled. Without this step,
+`pip install -r requirements.txt` succeeds but the file-parsing tests fail on
+first run in CI — a gap that's easy to miss locally if your own machine
+already happens to have both installed. `libreoffice` in particular is a large
+package; expect this step to add real time to every CI run, which is worth
+knowing before wondering why a "just running tests" pipeline got slow.
 
 ## Why two branches, two workflows, two AWS environments
 
