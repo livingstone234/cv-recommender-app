@@ -43,6 +43,7 @@ pytest==8.*
 pytest-cov==5.*
 pytest-asyncio==0.24.*
 mongomock==4.*
+mongomock-motor==0.0.*
 httpx==0.27.*
 ```
 
@@ -60,8 +61,11 @@ requirements.txt" isn't the same as understanding why they're there:
   nothing in your own code imports it directly.
 - **`pytest-asyncio`** — required to `async def test_...()` and have pytest
   actually await it, since the FastAPI app and Motor driver are both async.
-- **`mongomock`** — an in-memory fake MongoDB used in tests, so unit/integration
-  tests don't need a real Mongo instance running (see
+- **`mongomock`** / **`mongomock-motor`** — an in-memory fake MongoDB used in
+  tests, so unit/integration tests don't need a real Mongo instance running.
+  `mongomock` itself only fakes the synchronous PyMongo API; `mongomock-motor`
+  is the thin async wrapper that matches Motor's `await`-based API, which is
+  the one actually used against `app/services/mongo_service.py` (see
   [10-testing-strategy.md](10-testing-strategy.md)).
 - **`httpx`** — FastAPI's `TestClient` is built on top of `httpx`, not
   `requests`; it's a direct dependency because integration tests import it.

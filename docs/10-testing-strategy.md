@@ -2,16 +2,22 @@
 
 ## Unit vs integration, and why both
 
-- **Unit tests** mock `boto3`, `langchain` LLM clients, and MongoDB (via
-  `mongomock` or `pytest-mongo`) to test business logic in isolation. These
-  answer "does `job_search_service.build_search_links` produce the right URL
-  for a title with special characters" without touching a network.
-- **Integration tests** spin up a test MongoDB (via `mongomock`/Testcontainers)
-  and use FastAPI's `TestClient`, hitting real routers end-to-end **with LLM
-  calls mocked**. These answer "does `POST /cv/upload` actually create a
-  candidate, return the right shape, and set status correctly" — the wiring
-  between router → service → DB, which unit tests of individual services can't
-  catch.
+- **Unit tests** mock `boto3`, `langchain` LLM clients, and MongoDB to test
+  business logic in isolation. These answer "does
+  `job_search_service.build_search_links` produce the right URL for a title
+  with special characters" without touching a network.
+- **Integration tests** spin up a test MongoDB and use FastAPI's `TestClient`,
+  hitting real routers end-to-end **with LLM calls mocked**. These answer
+  "does `POST /cv/upload` actually create a candidate, return the right
+  shape, and set status correctly" — the wiring between router → service →
+  DB, which unit tests of individual services can't catch.
+
+**A driver-specific correction:** plain `mongomock` only fakes the
+*synchronous* PyMongo API. Since [04-data-models.md](04-data-models.md)
+establishes that this project uses **Motor** (async) throughout, the actual
+in-memory fake used is `mongomock-motor`'s `AsyncMongoMockClient` — a thin
+async wrapper around `mongomock` that matches Motor's `await`-based API. Same
+idea (no real MongoDB process needed), just the async-compatible variant.
 
 LLM calls are mocked in *both* tiers — never call a real OpenAI/Gemini API in
 CI. That would make tests slow, flaky (network-dependent), non-deterministic
